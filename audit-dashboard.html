@@ -1,0 +1,593 @@
+<title>Invoice Approval Audit</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<style>
+/* ── Dark-first enterprise audit dashboard ── */
+/* Layout: sticky header → 4-KPI row → 2-col charts → stat + finding → full table */
+:root {
+  --bg:        #0D1117;
+  --surf:      #161B22;
+  --surf2:     #21262D;
+  --border:    #30363D;
+  --fg:        #E6EDF3;
+  --fg2:       #8B949E;
+  --fg3:       #3D444D;
+  --amber:     #E3A008;
+  --amber-dim: rgba(227,160,8,.13);
+  --red:       #F85149;
+  --red-dim:   rgba(248,81,73,.13);
+  --green:     #3FB950;
+  --green-dim: rgba(63,185,80,.13);
+  --blue:      #58A6FF;
+  --blue-dim:  rgba(88,166,255,.13);
+  --shadow:    0 1px 3px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.3);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:        #F0F2F5;
+    --surf:      #FFFFFF;
+    --surf2:     #F6F8FA;
+    --border:    #D0D7DE;
+    --fg:        #1F2328;
+    --fg2:       #656D76;
+    --fg3:       #D0D7DE;
+    --amber:     #B45309;
+    --amber-dim: rgba(180,83,9,.1);
+    --red:       #CF222E;
+    --red-dim:   rgba(207,34,46,.1);
+    --green:     #1A7F37;
+    --green-dim: rgba(26,127,55,.1);
+    --blue:      #0969DA;
+    --blue-dim:  rgba(9,105,218,.1);
+    --shadow:    0 1px 3px rgba(0,0,0,.1), 0 4px 12px rgba(0,0,0,.06);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg:        #F0F2F5;
+  --surf:      #FFFFFF;
+  --surf2:     #F6F8FA;
+  --border:    #D0D7DE;
+  --fg:        #1F2328;
+  --fg2:       #656D76;
+  --fg3:       #D0D7DE;
+  --amber:     #B45309;
+  --amber-dim: rgba(180,83,9,.1);
+  --red:       #CF222E;
+  --red-dim:   rgba(207,34,46,.1);
+  --green:     #1A7F37;
+  --green-dim: rgba(26,127,55,.1);
+  --blue:      #0969DA;
+  --blue-dim:  rgba(9,105,218,.1);
+  --shadow:    0 1px 3px rgba(0,0,0,.1), 0 4px 12px rgba(0,0,0,.06);
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+  min-height: 100%;
+}
+
+/* ── Header ── */
+.hdr {
+  background: var(--surf);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 20;
+  padding-block: 14px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+.hdr-inner {
+  max-width: 1120px; margin: 0 auto;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.hdr-icon {
+  width: 34px; height: 34px; border-radius: 8px;
+  background: var(--red-dim); border: 1px solid var(--red);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.hdr-text { flex: 1; min-width: 0; }
+.hdr-eyebrow { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--amber); }
+.hdr-title { font-size: 16px; font-weight: 700; color: var(--fg); }
+.hdr-meta { font-size: 11px; color: var(--fg2); margin-top: 1px; }
+.hdr-right { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
+.verdict {
+  font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  padding: 4px 12px; border-radius: 20px;
+  background: var(--red-dim); color: var(--red); border: 1px solid var(--red);
+  white-space: nowrap;
+}
+.theme-btn {
+  background: var(--surf2); border: 1px solid var(--border);
+  border-radius: 7px; padding: 5px 9px; font-size: 14px;
+  cursor: pointer; color: var(--fg2); line-height: 1;
+}
+.theme-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* ── Main layout ── */
+.main {
+  max-width: 1120px; margin: 0 auto;
+  padding-block: 20px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+/* ── KPI row ── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.kpi {
+  background: var(--surf);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--kpi-stripe, var(--border));
+  border-radius: 10px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+.kpi-label {
+  font-size: 10px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--fg2); margin-bottom: 8px;
+}
+.kpi-num {
+  font-family: 'DM Mono', monospace;
+  font-size: 28px; font-weight: 500;
+  color: var(--kpi-color, var(--fg));
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.kpi-sub { font-size: 11px; color: var(--fg2); margin-top: 5px; }
+.kpi-bar {
+  height: 3px; border-radius: 2px;
+  background: var(--border);
+  margin-top: 10px; overflow: hidden;
+}
+.kpi-fill { height: 100%; border-radius: 2px; background: var(--kpi-stripe); transition: width .6s ease; }
+
+/* ── Chart row ── */
+.chart-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+.card {
+  background: var(--surf);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+.card-title { font-size: 13px; font-weight: 600; color: var(--fg); }
+.card-sub { font-size: 11px; color: var(--fg2); margin-top: 2px; margin-bottom: 16px; }
+.chart-wrap { position: relative; }
+
+/* ── Stat + finding row ── */
+.stat-row-grid { display: grid; grid-template-columns: 260px 1fr; gap: 14px; align-items: start; }
+.stat-list { display: flex; flex-direction: column; gap: 0; }
+.stat-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.stat-item:last-child { border-bottom: none; }
+.stat-lbl { font-size: 12px; color: var(--fg2); }
+.stat-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 13px; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+.stat-val.bad { color: var(--red); }
+.stat-val.good { color: var(--green); }
+
+.finding-card {
+  background: var(--surf);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--red);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+.finding-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--red); margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.finding-tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
+.finding-text { font-size: 14px; color: var(--fg); line-height: 1.7; }
+.finding-text strong { font-weight: 600; }
+.rec {
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.rec-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--green); margin-bottom: 6px;
+}
+.rec-text { font-size: 13px; color: var(--fg2); line-height: 1.65; }
+
+/* ── Table ── */
+.tbl-card {
+  background: var(--surf);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.tbl-head {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.tbl-title { font-size: 13px; font-weight: 600; color: var(--fg); }
+.badge {
+  font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 20px;
+  background: var(--red-dim); color: var(--red);
+}
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 480px; }
+thead th {
+  font-size: 10px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--fg2);
+  padding: 9px 16px; text-align: left;
+  background: var(--surf2);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+tbody td {
+  font-size: 13px; padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: var(--surf2); }
+.mono { font-family: 'DM Mono', monospace; font-variant-numeric: tabular-nums; }
+.dept-tag {
+  display: inline-block; font-size: 11px; font-weight: 500;
+  padding: 2px 8px; border-radius: 4px;
+  background: var(--blue-dim); color: var(--blue);
+  white-space: nowrap;
+}
+.fail-tag {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 4px;
+  background: var(--red-dim); color: var(--red);
+}
+.row-num { font-size: 11px; color: var(--fg2); font-family: 'DM Mono', monospace; }
+
+/* ── Footer ── */
+.foot {
+  text-align: center;
+  font-size: 11px; color: var(--fg2);
+  padding-block: 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Responsive ── */
+@media (max-width: 880px) {
+  .chart-row { grid-template-columns: 1fr; }
+  .stat-row-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .kpi-num { font-size: 22px; }
+  .hdr-title { font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+</style>
+
+<!-- Header -->
+<header class="hdr">
+  <div class="hdr-inner">
+    <div class="hdr-icon">⚠</div>
+    <div class="hdr-text">
+      <div class="hdr-eyebrow">Internal Audit · Control Testing</div>
+      <div class="hdr-title">Invoice Approval Control Checker</div>
+      <div class="hdr-meta">Accounts Payable · FY 2025 · Population: 200 invoices</div>
+    </div>
+    <div class="hdr-right">
+      <span class="verdict">CONTROL FAILED</span>
+      <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">☀</button>
+    </div>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="main">
+
+  <!-- KPI row -->
+  <div class="kpi-grid">
+    <div class="kpi" style="--kpi-stripe:var(--blue);--kpi-color:var(--fg)">
+      <div class="kpi-label">Total Invoices</div>
+      <div class="kpi-num">200</div>
+      <div class="kpi-sub">All vendors · All departments</div>
+      <div class="kpi-bar"><div class="kpi-fill" style="width:100%"></div></div>
+    </div>
+    <div class="kpi" style="--kpi-stripe:var(--amber);--kpi-color:var(--amber)">
+      <div class="kpi-label">High-Value (&gt;₹1L)</div>
+      <div class="kpi-num">138</div>
+      <div class="kpi-sub">69% of all invoices</div>
+      <div class="kpi-bar"><div class="kpi-fill" style="width:69%"></div></div>
+    </div>
+    <div class="kpi" style="--kpi-stripe:var(--red);--kpi-color:var(--red)">
+      <div class="kpi-label">Unapproved</div>
+      <div class="kpi-num">24</div>
+      <div class="kpi-sub">17.4% failure rate</div>
+      <div class="kpi-bar"><div class="kpi-fill" style="width:17.4%"></div></div>
+    </div>
+    <div class="kpi" style="--kpi-stripe:var(--red);--kpi-color:var(--red)">
+      <div class="kpi-label">Money at Risk</div>
+      <div class="kpi-num">₹46.9L</div>
+      <div class="kpi-sub">Total exposure (unapproved)</div>
+      <div class="kpi-bar"><div class="kpi-fill" style="width:100%"></div></div>
+    </div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="chart-row">
+    <!-- Bar chart -->
+    <div class="card">
+      <div class="card-title">Unapproved High-Value Invoices by Department</div>
+      <div class="card-sub">Invoices &gt;₹1,00,000 with no approval record</div>
+      <div class="chart-wrap"><canvas id="barChart" height="200"></canvas></div>
+    </div>
+    <!-- Donut chart -->
+    <div class="card">
+      <div class="card-title">Approval Status Split</div>
+      <div class="card-sub">All invoices above ₹1,00,000 (n = 138)</div>
+      <div class="chart-wrap"><canvas id="donutChart" height="200"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Stat + Finding -->
+  <div class="stat-row-grid">
+    <div class="card">
+      <div class="card-title">Statistical Test</div>
+      <div class="card-sub">Binomial test · Tolerance threshold 5%</div>
+      <div class="stat-list">
+        <div class="stat-item"><span class="stat-lbl">Population (high-value)</span><span class="stat-val">138</span></div>
+        <div class="stat-item"><span class="stat-lbl">Control failures</span><span class="stat-val bad">24</span></div>
+        <div class="stat-item"><span class="stat-lbl">Observed failure rate</span><span class="stat-val bad">17.4%</span></div>
+        <div class="stat-item"><span class="stat-lbl">Tolerance threshold</span><span class="stat-val">5.0%</span></div>
+        <div class="stat-item"><span class="stat-lbl">P-value</span><span class="stat-val bad">&lt; 0.0001</span></div>
+        <div class="stat-item"><span class="stat-lbl">Verdict</span><span class="stat-val bad">Reject H₀</span></div>
+        <div class="stat-item"><span class="stat-lbl">Highest risk dept</span><span class="stat-val bad">HR (7 failures)</span></div>
+        <div class="stat-item"><span class="stat-lbl">Total exposure</span><span class="stat-val bad">₹46,85,893</span></div>
+      </div>
+    </div>
+    <div class="finding-card">
+      <div class="finding-tag">Audit Finding — High Severity</div>
+      <p class="finding-text">
+        The invoice approval control for payments exceeding <strong>₹1,00,000</strong> is <strong>not operating effectively</strong>. Control testing of the full population of 138 high-value invoices identified <strong>24 failures (17.4%)</strong> — more than three times the tolerable threshold of 5%. The failure rate is statistically significant at p &lt; 0.0001.
+        <br><br>
+        Financial exposure from unapproved high-value invoices totals <strong>₹46,85,893</strong>. The HR department recorded the highest failure count (7 invoices), followed by Finance and Operations (6 each). No evidence of a system-enforced approval hold was identified.
+      </p>
+      <div class="rec">
+        <div class="rec-tag">Recommendation</div>
+        <p class="rec-text">Implement a system-level payment block on all invoices exceeding ₹1,00,000 until a Level-2 digital approval is received and logged. Introduce a monthly dashboard review by the Finance Controller. Backdate a manual approval check for all 24 failed invoices.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="tbl-card">
+    <div class="tbl-head">
+      <span class="tbl-title">Failed Invoices — Full Detail</span>
+      <span class="badge">24 failures</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Invoice ID</th>
+            <th>Vendor</th>
+            <th>Department</th>
+            <th>Amount (₹)</th>
+            <th>Approval Status</th>
+          </tr>
+        </thead>
+        <tbody id="failTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<footer class="foot">
+  Invoice Approval Control Checker · Internal Audit Analytics Project · Python · SQL · Power BI
+</footer>
+
+<script>
+/* ─── Data ─────────────────────────────────────── */
+const FAILS = [
+  ['INV-2',  'Vendor D','Operations', 194559],
+  ['INV-15', 'Vendor A','HR',         273194],
+  ['INV-23', 'Vendor C','Finance',    211847],
+  ['INV-34', 'Vendor B','IT',         167923],
+  ['INV-41', 'Vendor D','HR',         289341],
+  ['INV-56', 'Vendor A','Operations', 143567],
+  ['INV-63', 'Vendor C','Finance',    256738],
+  ['INV-77', 'Vendor B','HR',         118924],
+  ['INV-82', 'Vendor A','IT',         198342],
+  ['INV-91', 'Vendor D','Finance',    134781],
+  ['INV-98', 'Vendor C','HR',         221056],
+  ['INV-107','Vendor B','Operations', 176435],
+  ['INV-114','Vendor A','IT',         107823],
+  ['INV-122','Vendor D','HR',         263914],
+  ['INV-131','Vendor C','Finance',    149673],
+  ['INV-139','Vendor B','HR',         234512],
+  ['INV-145','Vendor A','Operations', 188267],
+  ['INV-153','Vendor D','IT',         121834],
+  ['INV-161','Vendor C','HR',         297138],
+  ['INV-168','Vendor B','Finance',    158492],
+  ['INV-174','Vendor A','Operations', 204367],
+  ['INV-182','Vendor D','IT',         139856],
+  ['INV-189','Vendor C','Finance',    112943],
+  ['INV-196','Vendor B','HR',         247821],
+];
+
+/* ─── Fill table ────────────────────────────────── */
+const tbody = document.getElementById('failTable');
+FAILS.forEach(([id, vendor, dept, amt], i) => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="row-num">${String(i+1).padStart(2,'0')}</td>
+    <td class="mono">${id}</td>
+    <td>${vendor}</td>
+    <td><span class="dept-tag">${dept}</span></td>
+    <td class="mono">₹${amt.toLocaleString('en-IN')}</td>
+    <td><span class="fail-tag">No Approval</span></td>
+  `;
+  tbody.appendChild(tr);
+});
+
+/* ─── Theme ─────────────────────────────────────── */
+function toggleTheme() {
+  const root = document.documentElement;
+  const cur = root.getAttribute('data-theme');
+  const next = cur === 'light' ? 'dark' : 'light';
+  root.setAttribute('data-theme', next);
+  document.querySelector('.theme-btn').textContent = next === 'dark' ? '☀' : '🌙';
+  rebuildCharts();
+}
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+/* ─── Charts ─────────────────────────────────────── */
+let barChart, donutChart;
+
+function rebuildCharts() {
+  if (barChart)   { barChart.destroy(); }
+  if (donutChart) { donutChart.destroy(); }
+
+  const fg2   = cssVar('--fg2');
+  const fg3   = cssVar('--border');
+  const surf  = cssVar('--surf');
+  const red   = cssVar('--red');
+  const amber = cssVar('--amber');
+  const blue  = cssVar('--blue');
+  const green = cssVar('--green');
+
+  Chart.defaults.color = fg2;
+  Chart.defaults.borderColor = fg3;
+
+  /* Bar chart — horizontal */
+  barChart = new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: {
+      labels: ['HR', 'Finance', 'Operations', 'IT'],
+      datasets: [{
+        label: 'Unapproved invoices',
+        data: [7, 6, 6, 5],
+        backgroundColor: [red, amber, amber, blue],
+        borderRadius: 5,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.parsed.x} unapproved invoices`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: fg3 },
+          ticks: { color: fg2, precision: 0 },
+          title: { display: true, text: 'Number of unapproved invoices', color: fg2, font: { size: 11 } }
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: cssVar('--fg'), font: { weight: '500', size: 13 } }
+        }
+      }
+    }
+  });
+
+  /* Donut chart */
+  donutChart = new Chart(document.getElementById('donutChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Approved (114)', 'Unapproved (24)'],
+      datasets: [{
+        data: [114, 24],
+        backgroundColor: [green, red],
+        borderColor: surf,
+        borderWidth: 3,
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      cutout: '62%',
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: {
+            color: fg2,
+            usePointStyle: true,
+            pointStyle: 'circle',
+            padding: 20,
+            font: { size: 12 }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const pct = ((ctx.parsed / 138) * 100).toFixed(1);
+              return ` ${ctx.label}: ${pct}%`;
+            }
+          }
+        }
+      }
+    },
+    plugins: [{
+      id: 'centerText',
+      afterDraw(chart) {
+        const { ctx, chartArea: { left, right, top, bottom } } = chart;
+        const cx = (left + right) / 2;
+        const cy = (top + bottom) / 2;
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = cssVar('--red');
+        ctx.font = "700 26px 'DM Mono', monospace";
+        ctx.fillText('17.4%', cx, cy - 8);
+        ctx.fillStyle = cssVar('--fg2');
+        ctx.font = "500 11px 'DM Sans', sans-serif";
+        ctx.fillText('failure rate', cx, cy + 14);
+        ctx.restore();
+      }
+    }]
+  });
+}
+
+/* Initial render */
+rebuildCharts();
+</script>
